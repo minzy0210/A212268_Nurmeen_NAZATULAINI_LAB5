@@ -8,13 +8,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -24,11 +25,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
+import androidx.lifecycle.viewmodel.compose.viewModel
 
 data class NonFoodItem(
     val name: String,
@@ -53,16 +56,36 @@ fun getNonFoodItemData(name: String): NonFoodItem {
     }
 }
 
-// Which full-screen overlay is visible
 private enum class NonFoodScreen { NONE, DATE_PICKER, CONFIRMED }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun NonFoodDetailScreen(itemName: String, onBack: () -> Unit) {
-    val item = remember { getNonFoodItemData(itemName) }
+fun NonFoodDetailScreen(
+    itemName: String,
+    onBack: () -> Unit,
+    onHomeClick: () -> Unit = {},
+    onMessageOwner: (String, String) -> Unit = { _, _ -> },
+    chatViewModel: ChatViewModel = viewModel(),
+    viewModel: ReServeViewModel = viewModel()
+) {
+    val userItem = viewModel.getUserListedItem(itemName)
+    val item = if (userItem != null) {
+        NonFoodItem(
+            name           = userItem.name,
+            owner          = userItem.sellerName,
+            distance       = userItem.location,
+            condition      = userItem.condition,
+            availableUntil = userItem.availableUntil,
+            description    = userItem.description,
+            maxBorrowDays  = userItem.maxBorrowDays,
+            deposit        = userItem.deposit
+        )
+    } else {
+        getNonFoodItemData(itemName)
+    }
+    val isAlreadyBorrowed = viewModel.isBorrowed(itemName)
     var currentScreen by remember { mutableStateOf(NonFoodScreen.NONE) }
 
-    // Date selection state
     val today = remember { LocalDate.now() }
     var startDate by remember { mutableStateOf<LocalDate?>(null) }
     var endDate by remember { mutableStateOf<LocalDate?>(null) }
@@ -79,9 +102,10 @@ fun NonFoodDetailScreen(itemName: String, onBack: () -> Unit) {
         (endDate!!.toEpochDay() - startDate!!.toEpochDay()).toInt() + 1
     else 0
 
+    // ── outermost Box: holds background + all layers ──────────────────
     Box(modifier = Modifier.fillMaxSize()) {
 
-        // ── 1. Background ──────────────────────────────────────────────
+        // ── 1. Background ─────────────────────────────────────────────
         Image(
             painter = painterResource(id = R.drawable.wallpaper),
             contentDescription = null,
@@ -94,243 +118,291 @@ fun NonFoodDetailScreen(itemName: String, onBack: () -> Unit) {
                 .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.65f))
         )
 
-        // ── 2. Main Detail Content ─────────────────────────────────────
-        Column(modifier = Modifier.fillMaxSize()) {
-
-            // Hero image
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(300.dp)
-            ) {
-                Image(
-                    painter = painterResource(id = getItemImage(itemName)),
-                    contentDescription = itemName,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(
-                                    Color.Black.copy(alpha = 0.4f),
-                                    Color.Transparent,
-                                    Color.Black.copy(alpha = 0.7f)
-                                ),
-                                startY = 0f
-                            )
-                        )
-                )
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 48.dp, start = 16.dp, end = 16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(
-                        onClick = onBack,
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f))
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                            tint = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                    Surface(
-                        color = MaterialTheme.colorScheme.tertiary,
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text(
-                            "BORROW",
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            color = MaterialTheme.colorScheme.onTertiary,
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 12.sp
-                        )
-                    }
-                }
-
-                Text(
-                    text = itemName,
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(20.dp),
-                    style = MaterialTheme.typography.headlineLarge.copy(
-                        color = Color.White,
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 32.sp
-                    )
+        // ── 2. Main content inside Scaffold ───────────────────────────
+        Scaffold(
+            containerColor = Color.Transparent,
+            bottomBar = {
+                CustomBottomNavigation(
+                    onHomeClick = onHomeClick,
+                    onSearchClick = onHomeClick,
+                    onEmailClick = onHomeClick,
+                    onAddClick = onHomeClick
                 )
             }
-
-            // Info Card
-            Surface(
+        ) { innerPadding ->
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .offset(y = (-20).dp),
-                shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
-                contentColor = MaterialTheme.colorScheme.onSurface
+                    .fillMaxSize()
+                    .padding(innerPadding)
             ) {
-                Column(
+                // Hero image
+                Box(
                     modifier = Modifier
-                        .padding(24.dp)
-                        .verticalScroll(rememberScrollState())
+                        .fillMaxWidth()
+                        .height(280.dp)
+                        .zIndex(0f)
                 ) {
-                    // Deposit & Condition
+                    Image(
+                        painter = painterResource(id = getItemImage(itemName)),
+                        contentDescription = itemName,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.verticalGradient(
+                                    colors = listOf(
+                                        Color.Black.copy(alpha = 0.4f),
+                                        Color.Transparent,
+                                        Color.Black.copy(alpha = 0.7f)
+                                    ),
+                                    startY = 0f
+                                )
+                            )
+                    )
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 48.dp, start = 16.dp, end = 16.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
-                            Text(
-                                "Refundable Deposit",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                if (item.deposit == 0.0) "FREE" else "RM %.2f".format(item.deposit),
-                                style = MaterialTheme.typography.headlineMedium.copy(
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = if (item.deposit == 0.0) Color(0xFF2E7D32) else MaterialTheme.colorScheme.primary
-                                )
+                        IconButton(
+                            onClick = onBack,
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f))
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                                tint = MaterialTheme.colorScheme.onSurface
                             )
                         }
                         Surface(
-                            modifier = Modifier.clip(RoundedCornerShape(20.dp)),
-                            color = conditionColor.copy(alpha = 0.15f)
+                            color = MaterialTheme.colorScheme.tertiary,
+                            shape = RoundedCornerShape(12.dp)
                         ) {
                             Text(
-                                item.condition,
+                                "BORROW",
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                color = conditionColor,
-                                fontWeight = FontWeight.Bold
+                                color = MaterialTheme.colorScheme.onTertiary,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 12.sp
                             )
                         }
                     }
+                    Text(
+                        text = itemName,
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(20.dp),
+                        style = MaterialTheme.typography.headlineLarge.copy(
+                            color = Color.White,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 32.sp
+                        )
+                    )
+                } // end Hero Box
 
-                    Spacer(modifier = Modifier.height(24.dp))
-
-                    // Owner card
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                // Info Card
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .zIndex(1f),
+                    shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
+                    contentColor = MaterialTheme.colorScheme.onSurface
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .padding(24.dp)
+                            .padding(bottom = 32.dp)
+                            .verticalScroll(rememberScrollState())
                     ) {
+                        // Deposit & Condition
                         Row(
-                            modifier = Modifier.padding(16.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                Icons.Default.AccountBox,
-                                null,
-                                tint = MaterialTheme.colorScheme.tertiary,
-                                modifier = Modifier.size(40.dp)
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column(modifier = Modifier.weight(1f)) {
+                            Column {
                                 Text(
-                                    "Community Owner",
+                                    "Refundable Deposit",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Text(
-                                    item.owner,
-                                    fontWeight = FontWeight.Bold,
+                                    if (item.deposit == 0.0) "FREE"
+                                    else "RM %.2f".format(item.deposit),
+                                    style = MaterialTheme.typography.headlineMedium.copy(
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = if (item.deposit == 0.0) Color(0xFF2E7D32)
+                                        else MaterialTheme.colorScheme.primary
+                                    )
+                                )
+                            }
+                            Surface(
+                                modifier = Modifier.clip(RoundedCornerShape(20.dp)),
+                                color = conditionColor.copy(alpha = 0.15f)
+                            ) {
+                                Text(
+                                    item.condition,
+                                    modifier = Modifier.padding(
+                                        horizontal = 12.dp, vertical = 6.dp
+                                    ),
+                                    color = conditionColor,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(24.dp))
+
+                        // Owner card
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.AccountBox, null,
+                                    tint = MaterialTheme.colorScheme.tertiary,
+                                    modifier = Modifier.size(40.dp)
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        "Community Owner",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        item.owner,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                                Icon(
+                                    Icons.Default.LocationOn, null,
+                                    tint = MaterialTheme.colorScheme.tertiary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    item.distance,
+                                    fontWeight = FontWeight.Medium,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                             }
-                            Icon(
-                                Icons.Default.LocationOn,
-                                null,
-                                tint = MaterialTheme.colorScheme.tertiary,
-                                modifier = Modifier.size(16.dp)
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        OutlinedButton(
+                            onClick = {
+                                chatViewModel.startConversation(
+                                    item.owner, itemName, getItemImage(itemName)
+                                )
+                                onMessageOwner(item.owner, itemName)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary)
+                        ) {
+                            Icon(Icons.Default.Email, null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Message Owner")
+                        }
+
+                        Spacer(modifier = Modifier.height(24.dp))
+
+                        Text(
+                            "About this item",
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            item.description,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            lineHeight = 24.sp
+                        )
+
+                        Spacer(modifier = Modifier.weight(1f))
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            SuggestionChip(
+                                onClick = { },
+                                label = { Text("Max ${item.maxBorrowDays} days") },
+                                icon = {
+                                    Icon(
+                                        Icons.Default.DateRange, null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
                             )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                item.distance,
-                                fontWeight = FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.onSurface
+                            SuggestionChip(
+                                onClick = { },
+                                label = { Text("Until ${item.availableUntil}") },
+                                icon = {
+                                    Icon(
+                                        Icons.Default.CheckCircle, null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
                             )
                         }
-                    }
 
-                    Spacer(modifier = Modifier.height(24.dp))
+                        Spacer(modifier = Modifier.height(16.dp))
 
-                    Text(
-                        "About this item",
-                        fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        item.description,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        lineHeight = 24.sp
-                    )
+                        Button(
+                            onClick = {
+                                if (!isAlreadyBorrowed)
+                                    currentScreen = NonFoodScreen.DATE_PICKER
+                            },
+                            enabled = !isAlreadyBorrowed,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(56.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isAlreadyBorrowed) Color.Gray
+                                else MaterialTheme.colorScheme.tertiary
+                            )
+                        ) {
+                            Icon(
+                                if (isAlreadyBorrowed) Icons.Default.Lock
+                                else Icons.Default.DateRange,
+                                null
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                if (isAlreadyBorrowed) "Currently Borrowed"
+                                else "Select Borrow Dates",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp
+                            )
+                        }
 
-                    Spacer(modifier = Modifier.height(24.dp))
+                        Spacer(modifier = Modifier.height(32.dp))
+                    } // end inner Column (scrollable)
+                } // end Info Card Surface
+            } // end outer Column
+        } // end Scaffold
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        SuggestionChip(
-                            onClick = { },
-                            label = { Text("Max ${item.maxBorrowDays} days") },
-                            icon = { Icon(Icons.Default.DateRange, null, modifier = Modifier.size(16.dp)) }
-                        )
-                        SuggestionChip(
-                            onClick = { },
-                            label = { Text("Until ${item.availableUntil}") },
-                            icon = { Icon(Icons.Default.CheckCircle, null, modifier = Modifier.size(16.dp)) }
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(32.dp))
-
-                    // Request Button → opens date picker screen
-                    Button(
-                        onClick = { currentScreen = NonFoodScreen.DATE_PICKER },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(56.dp),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.tertiary
-                        )
-                    ) {
-                        Icon(Icons.Default.DateRange, null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Select Borrow Dates", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    Text(
-                        "Owner will confirm your request via message",
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 4.dp),
-                        textAlign = TextAlign.Center,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
-                    Spacer(modifier = Modifier.height(48.dp))
-                }
-            }
-        }
-
-        // ── 3. Full-Screen Date Picker Overlay ─────────────────────────
+        // ── 3. DATE_PICKER overlay — outside Scaffold ─────────────────
         AnimatedVisibility(
             visible = currentScreen == NonFoodScreen.DATE_PICKER,
             enter = fadeIn(tween(250)) + slideInVertically(
@@ -355,8 +427,11 @@ fun NonFoodDetailScreen(itemName: String, onBack: () -> Unit) {
                         .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.80f))
                 )
 
-                Column(modifier = Modifier.fillMaxSize()) {
-
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                ) {
                     // Top bar
                     Row(
                         modifier = Modifier
@@ -399,24 +474,35 @@ fun NonFoodDetailScreen(itemName: String, onBack: () -> Unit) {
                         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.97f)
                     ) {
                         Column(modifier = Modifier.padding(20.dp)) {
-
                             // Month navigation
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                IconButton(onClick = { displayedMonth = displayedMonth.minusMonths(1) }) {
-                                    Icon(Icons.Default.KeyboardArrowLeft, null, tint = MaterialTheme.colorScheme.onSurface)
+                                IconButton(onClick = {
+                                    displayedMonth = displayedMonth.minusMonths(1)
+                                }) {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.KeyboardArrowLeft, null,
+                                        tint = MaterialTheme.colorScheme.onSurface
+                                    )
                                 }
                                 Text(
-                                    displayedMonth.month.getDisplayName(TextStyle.FULL, Locale.getDefault()) + " " + displayedMonth.year,
+                                    displayedMonth.month.getDisplayName(
+                                        TextStyle.FULL, Locale.getDefault()
+                                    ) + " " + displayedMonth.year,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 16.sp,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
-                                IconButton(onClick = { displayedMonth = displayedMonth.plusMonths(1) }) {
-                                    Icon(Icons.Default.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurface)
+                                IconButton(onClick = {
+                                    displayedMonth = displayedMonth.plusMonths(1)
+                                }) {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.KeyboardArrowRight, null,
+                                        tint = MaterialTheme.colorScheme.onSurface
+                                    )
                                 }
                             }
 
@@ -424,7 +510,7 @@ fun NonFoodDetailScreen(itemName: String, onBack: () -> Unit) {
 
                             // Day-of-week headers
                             Row(modifier = Modifier.fillMaxWidth()) {
-                                listOf("Su", "Mo", "Tu", "We", "Th", "Fr", "Sa").forEach { day ->
+                                listOf("Su","Mo","Tu","We","Th","Fr","Sa").forEach { day ->
                                     Text(
                                         day,
                                         modifier = Modifier.weight(1f),
@@ -440,18 +526,14 @@ fun NonFoodDetailScreen(itemName: String, onBack: () -> Unit) {
 
                             // Calendar grid
                             val firstDayOfMonth = displayedMonth.atDay(1)
-                            val startDayOfWeek = firstDayOfMonth.dayOfWeek.value % 7 // Sunday = 0
+                            val startDayOfWeek = firstDayOfMonth.dayOfWeek.value % 7
                             val daysInMonth = displayedMonth.lengthOfMonth()
-
-                            val totalCells = startDayOfWeek + daysInMonth
-                            val rows = (totalCells + 6) / 7
+                            val rows = (startDayOfWeek + daysInMonth + 6) / 7
 
                             for (row in 0 until rows) {
                                 Row(modifier = Modifier.fillMaxWidth()) {
                                     for (col in 0 until 7) {
-                                        val cellIndex = row * 7 + col
-                                        val dayNumber = cellIndex - startDayOfWeek + 1
-
+                                        val dayNumber = row * 7 + col - startDayOfWeek + 1
                                         if (dayNumber < 1 || dayNumber > daysInMonth) {
                                             Box(modifier = Modifier.weight(1f).height(40.dp))
                                         } else {
@@ -463,11 +545,10 @@ fun NonFoodDetailScreen(itemName: String, onBack: () -> Unit) {
                                                     date.isAfter(startDate) && date.isBefore(endDate)
                                             val isSelected = isStart || isEnd
                                             val isToday = date == today
-
-                                            // Check max borrow day constraint
                                             val exceedsMax = startDate != null && endDate == null &&
-                                                    date.isAfter(startDate!!.plusDays(item.maxBorrowDays.toLong() - 1))
-
+                                                    date.isAfter(
+                                                        startDate!!.plusDays(item.maxBorrowDays.toLong() - 1)
+                                                    )
                                             val isDisabled = isPast || exceedsMax
 
                                             Box(
@@ -515,12 +596,12 @@ fun NonFoodDetailScreen(itemName: String, onBack: () -> Unit) {
                                     }
                                 }
                             }
-                        }
-                    }
+                        } // end Calendar Surface Column
+                    } // end Calendar Surface
 
                     Spacer(Modifier.height(20.dp))
 
-                    // Selected range summary
+                    // Date range summary
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -533,7 +614,6 @@ fun NonFoodDetailScreen(itemName: String, onBack: () -> Unit) {
                             horizontalArrangement = Arrangement.SpaceEvenly
                         ) {
                             val fmt = DateTimeFormatter.ofPattern("d MMM")
-
                             DateSummaryColumn(
                                 label = "Pick-up Date",
                                 value = startDate?.format(fmt) ?: "Not set",
@@ -554,7 +634,9 @@ fun NonFoodDetailScreen(itemName: String, onBack: () -> Unit) {
                             )
                             DateSummaryColumn(
                                 label = "Duration",
-                                value = if (borrowDays > 0) "$borrowDays day${if (borrowDays > 1) "s" else ""}" else "--",
+                                value = if (borrowDays > 0)
+                                    "$borrowDays day${if (borrowDays > 1) "s" else ""}"
+                                else "--",
                                 isSet = borrowDays > 0
                             )
                         }
@@ -566,6 +648,7 @@ fun NonFoodDetailScreen(itemName: String, onBack: () -> Unit) {
                     Button(
                         onClick = {
                             if (startDate != null && endDate != null) {
+                                viewModel.borrowNonFoodItem(itemName)
                                 currentScreen = NonFoodScreen.CONFIRMED
                             }
                         },
@@ -599,11 +682,13 @@ fun NonFoodDetailScreen(itemName: String, onBack: () -> Unit) {
                         color = Color.White.copy(alpha = 0.65f),
                         fontSize = 13.sp
                     )
-                }
-            }
-        }
 
-        // ── 4. Full-Screen Confirmed Overlay ───────────────────────────
+                    Spacer(Modifier.height(16.dp))
+                } // end DATE_PICKER Column
+            } // end DATE_PICKER Box
+        } // end DATE_PICKER AnimatedVisibility
+
+        // ── 4. CONFIRMED overlay — outside Scaffold ───────────────────
         AnimatedVisibility(
             visible = currentScreen == NonFoodScreen.CONFIRMED,
             enter = fadeIn(tween(250)) + slideInVertically(
@@ -637,7 +722,6 @@ fun NonFoodDetailScreen(itemName: String, onBack: () -> Unit) {
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    // Check circle
                     Box(contentAlignment = Alignment.Center) {
                         Surface(
                             modifier = Modifier.size(130.dp),
@@ -666,9 +750,7 @@ fun NonFoodDetailScreen(itemName: String, onBack: () -> Unit) {
                             fontWeight = FontWeight.ExtraBold
                         )
                     )
-
                     Spacer(modifier = Modifier.height(8.dp))
-
                     Text(
                         itemName,
                         style = MaterialTheme.typography.titleLarge.copy(
@@ -680,7 +762,6 @@ fun NonFoodDetailScreen(itemName: String, onBack: () -> Unit) {
 
                     Spacer(modifier = Modifier.height(32.dp))
 
-                    // Details panel
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(20.dp),
@@ -706,9 +787,7 @@ fun NonFoodDetailScreen(itemName: String, onBack: () -> Unit) {
 
                     Button(
                         onClick = onBack,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(56.dp),
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
                         shape = RoundedCornerShape(16.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color.White)
                     ) {
@@ -731,24 +810,22 @@ fun NonFoodDetailScreen(itemName: String, onBack: () -> Unit) {
                     }
                 }
             }
-        }
-    }
+        } // end CONFIRMED AnimatedVisibility
+
+    } // end outermost Box
 }
 
 @Composable
 private fun DateSummaryColumn(label: String, value: String, isSet: Boolean) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            label,
-            fontSize = 11.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        Text(label, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
         Text(
             value,
             fontSize = 14.sp,
             fontWeight = FontWeight.Bold,
-            color = if (isSet) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant
+            color = if (isSet) MaterialTheme.colorScheme.tertiary
+            else MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }

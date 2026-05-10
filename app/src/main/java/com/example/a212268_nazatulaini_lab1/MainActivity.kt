@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.rememberAsyncImagePainter
 import com.example.a212268_nazatulaini_lab1.ui.theme.AppTheme
 
 class MainActivity : ComponentActivity() {
@@ -43,22 +44,38 @@ class MainActivity : ComponentActivity() {
 fun ReServeApp(
     onFoodItemClick: (String) -> Unit = {},
     onNonFoodItemClick: (String) -> Unit = {},
-    viewModel: ReServeViewModel = viewModel()
-) {
-    var selectedFilter by remember { mutableStateOf("All") }
+    onEmailClick: (String, String) -> Unit = { _, _ -> },
+    onCartClick: () -> Unit = {},
+    onAddClick: () -> Unit = {},
+    onAllFoodClick: () -> Unit = {},
+    onAllNonFoodClick: () -> Unit = {},
+    onAllGoingSoonClick: () -> Unit = {},
+    onHomeClick: () -> Unit = {},
+    initialFilter: String = "All",
+    viewModel: ReServeViewModel,
+    chatViewModel: ChatViewModel = androidx.lifecycle.viewmodel.compose.viewModel()) {
+
+    var selectedFilter by remember { mutableStateOf(initialFilter) }
     var searchQuery by remember { mutableStateOf("") }
     var isSearchMode by remember { mutableStateOf(false) }
+    var currentTab by remember { mutableStateOf("home") }
 
-    // State from ViewModel
+    fun resetToHome() {
+        currentTab = "home"
+        isSearchMode = false
+        selectedFilter = "All"
+        searchQuery = ""
+    }
+
     val cartItems by viewModel.cartItems.collectAsStateWithLifecycle()
-    val allFood = viewModel.getFoodItems().map { it.name }
-    val allNonFood = viewModel.getNonFoodItems().map { it.name }
+    val userListedItems by viewModel.userListedItems.collectAsStateWithLifecycle()
+    val allFood = remember(userListedItems) { viewModel.getFoodItems().map { it.name } }
+    val allNonFood = remember(userListedItems) { viewModel.getNonFoodItems().map { it.name } }
     val goingSoon = viewModel.getGoingSoon().map { it.name }
     val filteredResults = if (searchQuery.isBlank()) emptyList()
     else viewModel.searchItems(searchQuery).map { it.name }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // Background Image
         Image(
             painter = painterResource(id = R.drawable.wallpaper),
             contentDescription = null,
@@ -75,95 +92,153 @@ fun ReServeApp(
             containerColor = Color.Transparent,
             bottomBar = {
                 CustomBottomNavigation(
-                    onHomeClick = { isSearchMode = false },
-                    onSearchClick = { isSearchMode = true }
+                    onHomeClick = { currentTab = "home"
+                        isSearchMode = false
+                        selectedFilter = "All"
+                        searchQuery = ""
+                        onHomeClick()},
+                    onSearchClick = { currentTab = "home"; isSearchMode = true },
+                    onEmailClick = { currentTab = "messages" },
+                    onAddClick = onAddClick
                 )
             }
         ) { innerPadding ->
-            Column(
-                modifier = Modifier
-                    .padding(innerPadding)
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(16.dp)
-            ) {
-                if (isSearchMode) {
-                    Text(
-                        "Search Items",
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    SearchBar(query = searchQuery, onQueryChange = { searchQuery = it })
-
-                    Spacer(modifier = Modifier.height(20.dp))
-                    Text(
-                        "Found ${filteredResults.size} items",
-                        color = Color.White.copy(alpha = 0.8f),
-                        fontSize = 14.sp
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    filteredResults.forEach { item ->
-                        FullWidthItemCard(
-                            name = item,
-                            imageRes = getItemImage(item),
-                            onItemClick = {
-                                if (allFood.contains(item)) onFoodItemClick(item)
-                                else onNonFoodItemClick(item)
-                            }
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                    }
-
-                } else {
-                    HeaderSection(cartCount = cartItems.size)
-                    Spacer(modifier = Modifier.height(20.dp))
-
-                    FilterSection(selectedFilter) { selectedFilter = it }
-
-                    Spacer(modifier = Modifier.height(24.dp))
-
-                    if (selectedFilter == "All") {
-                        PromotionSection()
-                        Spacer(modifier = Modifier.height(24.dp))
-
-                        HorizontalRow("Food Items", allFood) { itemName ->
-                            onFoodItemClick(itemName)
-                        }
-                        Spacer(modifier = Modifier.height(24.dp))
-
-                        HorizontalRow("Non-food Items", allNonFood) { itemName ->
-                            onNonFoodItemClick(itemName)
-                        }
-                        Spacer(modifier = Modifier.height(24.dp))
-
-                        HorizontalRow("Going Soon", goingSoon) { itemName ->
-                            onFoodItemClick(itemName)
-                        }
-
-                    } else {
-                        val itemsToShow = if (selectedFilter == "Food") allFood else allNonFood
+            if (currentTab == "messages") {
+                ChatInboxScreen(
+                    onConversationClick = { owner, item -> onEmailClick(owner, item) },
+                    modifier = Modifier.padding(innerPadding),
+                    chatViewModel = chatViewModel
+                )
+            } else {
+                Column(
+                    modifier = Modifier
+                        .padding(innerPadding)
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(16.dp)
+                ) {
+                    if (isSearchMode) {
                         Text(
-                            "Category: $selectedFilter",
-                            color = Color.White,
+                            "Search Items",
+                            fontSize = 24.sp,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 20.sp
+                            color = Color.White
                         )
                         Spacer(modifier = Modifier.height(16.dp))
-
-                        itemsToShow.forEach { item ->
+                        SearchBar(query = searchQuery, onQueryChange = { searchQuery = it })
+                        Spacer(modifier = Modifier.height(20.dp))
+                        Text(
+                            "Found ${filteredResults.size} items",
+                            color = Color.White.copy(alpha = 0.8f),
+                            fontSize = 14.sp
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        filteredResults.forEach { item ->
                             FullWidthItemCard(
                                 name = item,
                                 imageRes = getItemImage(item),
+                                isSoldOut = viewModel.isSoldOut(item),
+                                isBorrowed = viewModel.isBorrowed(item),
+                                photoUriString = viewModel.getPhotoUri(item),
                                 onItemClick = {
-                                    if (selectedFilter == "Food") onFoodItemClick(item)
-                                    else onNonFoodItemClick(item)
+                                    val userItem = userListedItems.firstOrNull { it.name == item }
+                                    when {
+                                        userItem != null -> {
+                                            if (userItem.category.equals("Food", ignoreCase = true)) onFoodItemClick(item)
+                                            else onNonFoodItemClick(item)
+                                        }
+                                        allFood.contains(item) -> onFoodItemClick(item)
+                                        else -> onNonFoodItemClick(item)
+                                    }
                                 }
                             )
+                            Spacer(modifier = Modifier.height(12.dp))
+                        }
+                    } else {
+                        HeaderSection(
+                            cartCount = cartItems.size,
+                            onCartClick = onCartClick
+                        )
+                        Spacer(modifier = Modifier.height(20.dp))
+                        FilterSection(selectedFilter) { selectedFilter = it }
+                        Spacer(modifier = Modifier.height(24.dp))
+
+                        if (selectedFilter == "All") {
+                            PromotionSection()
+                            Spacer(modifier = Modifier.height(24.dp))
+
+                            HorizontalRow(
+                                title = "Food Items",
+                                items = allFood,
+                                viewModel = viewModel,
+                                onItemClick = { itemName -> onFoodItemClick(itemName) },
+                                onAllClick = onAllFoodClick
+                            )
+                            Spacer(modifier = Modifier.height(24.dp))
+
+                            HorizontalRow(
+                                title = "Non-food Items",
+                                items = allNonFood,
+                                viewModel = viewModel,
+                                onItemClick = { itemName -> onNonFoodItemClick(itemName) },
+                                onAllClick = onAllNonFoodClick
+                            )
+                            Spacer(modifier = Modifier.height(24.dp))
+
+                            HorizontalRow(
+                                title = "Going Soon",
+                                items = goingSoon,
+                                viewModel = viewModel,
+                                onItemClick = { itemName -> onFoodItemClick(itemName) },
+                                onAllClick = onAllGoingSoonClick    // ← wire it up
+                            )
+
+                            if (userListedItems.isNotEmpty()) {
+                                Spacer(modifier = Modifier.height(24.dp))
+                                HorizontalRow(
+                                    title = "My Listings",
+                                    items = userListedItems.map { it.name },
+                                    viewModel = viewModel,
+                                    onItemClick = { itemName ->
+                                        val cat = userListedItems.firstOrNull { it.name == itemName }?.category
+                                        when {
+                                            cat?.equals("Food", ignoreCase = true) == true -> onFoodItemClick(itemName)
+                                            cat != null -> onNonFoodItemClick(itemName)
+                                            allFood.contains(itemName) -> onFoodItemClick(itemName)
+                                            else -> onNonFoodItemClick(itemName)
+                                        }
+                                    }
+                                )
+                            }
+
+                        } else {
+                            val itemsToShow = when (selectedFilter) {
+                                "Food" -> allFood
+                                "Non-food" -> allNonFood
+                                "Going Soon" -> goingSoon   // ← add this
+                                else -> allFood
+                            }
+                            Text(
+                                "Category: $selectedFilter",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 20.sp
+                            )
                             Spacer(modifier = Modifier.height(16.dp))
+                            itemsToShow.forEach { item ->
+                                FullWidthItemCard(
+                                    name = item,
+                                    imageRes = getItemImage(item),
+                                    isSoldOut = viewModel.isSoldOut(item),
+                                    isBorrowed = viewModel.isBorrowed(item),
+                                    photoUriString = viewModel.getPhotoUri(item),
+                                    onItemClick = {
+                                        if (selectedFilter == "Food") onFoodItemClick(item)
+                                        else onNonFoodItemClick(item)
+                                    }
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                            }
                         }
                     }
                 }
@@ -203,7 +278,13 @@ fun SearchBar(query: String, onQueryChange: (String) -> Unit) {
 }
 
 @Composable
-fun HorizontalRow(title: String, items: List<String>, onItemClick: (String) -> Unit = {}) {
+fun HorizontalRow(
+    title: String,
+    items: List<String>,
+    onItemClick: (String) -> Unit = {},
+    onAllClick: () -> Unit = {},
+    viewModel: ReServeViewModel? = null
+) {
     Column {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -231,19 +312,36 @@ fun HorizontalRow(title: String, items: List<String>, onItemClick: (String) -> U
                 modifier = Modifier
                     .background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(4.dp))
                     .padding(horizontal = 6.dp, vertical = 2.dp)
+                    .clickable { onAllClick() }   // ← wire it up
             )
         }
         Spacer(modifier = Modifier.height(12.dp))
         LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             items(items) { name ->
-                SmallItemCard(name, getItemImage(name), onClick = { onItemClick(name) })
+                SmallItemCard(
+                    name = name,
+                    imageRes = getItemImage(name),
+                    onClick = { onItemClick(name) },
+                    isSoldOut = viewModel?.isSoldOut(name) ?: false,
+                    isBorrowed = viewModel?.isBorrowed(name) ?: false,
+                    photoUriString = viewModel?.getPhotoUri(name),
+                    distance = viewModel?.getDistance(name) ?: ""
+                )
             }
         }
     }
 }
 
 @Composable
-fun SmallItemCard(name: String, imageRes: Int, onClick: () -> Unit = {}) {
+fun SmallItemCard(
+    name: String,
+    imageRes: Int,
+    onClick: () -> Unit = {},
+    isSoldOut: Boolean = false,
+    isBorrowed: Boolean = false,
+    photoUriString: String? = null,
+    distance: String = ""
+) {
     Card(
         modifier = Modifier
             .width(150.dp)
@@ -254,14 +352,62 @@ fun SmallItemCard(name: String, imageRes: Int, onClick: () -> Unit = {}) {
         )
     ) {
         Column {
-            Image(
-                painter = painterResource(id = imageRes),
-                contentDescription = name,
-                modifier = Modifier
-                    .height(100.dp)
-                    .fillMaxWidth(),
-                contentScale = ContentScale.Crop
-            )
+            Box {
+                when {
+                    photoUriString != null -> {
+                        Image(
+                            painter = rememberAsyncImagePainter(photoUriString),
+                            contentDescription = name,
+                            modifier = Modifier
+                                .height(100.dp)
+                                .fillMaxWidth(),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+                    imageRes != R.drawable.blank -> {
+                        Image(
+                            painter = painterResource(id = imageRes),
+                            contentDescription = name,
+                            modifier = Modifier
+                                .height(100.dp)
+                                .fillMaxWidth(),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+                    else -> {
+                        Box(
+                            modifier = Modifier
+                                .height(100.dp)
+                                .fillMaxWidth()
+                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                        )
+                    }
+                }
+
+                if (isSoldOut || isBorrowed) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(100.dp)
+                            .background(Color.Black.copy(alpha = 0.5f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Surface(
+                            color = if (isSoldOut) MaterialTheme.colorScheme.error
+                            else Color(0xFF5C6BC0),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(
+                                if (isSoldOut) "Sold Out" else "Borrowed",
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
+                }
+            }
             Column(modifier = Modifier.padding(8.dp)) {
                 Text(
                     name,
@@ -269,7 +415,7 @@ fun SmallItemCard(name: String, imageRes: Int, onClick: () -> Unit = {}) {
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    "21.6km",
+                    distance.ifBlank { "Nearby" },
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -279,7 +425,14 @@ fun SmallItemCard(name: String, imageRes: Int, onClick: () -> Unit = {}) {
 }
 
 @Composable
-fun FullWidthItemCard(name: String, imageRes: Int, onItemClick: () -> Unit = {}) {
+fun FullWidthItemCard(
+    name: String,
+    imageRes: Int,
+    onItemClick: () -> Unit = {},
+    isSoldOut: Boolean = false,
+    isBorrowed: Boolean = false,
+    photoUriString: String? = null
+) {
     var expanded by remember { mutableStateOf(false) }
 
     Card(
@@ -298,14 +451,71 @@ fun FullWidthItemCard(name: String, imageRes: Int, onItemClick: () -> Unit = {})
         )
     ) {
         Column {
-            Image(
-                painter = painterResource(id = imageRes),
-                contentDescription = name,
-                modifier = Modifier
-                    .height(140.dp)
-                    .fillMaxWidth(),
-                contentScale = ContentScale.Crop
-            )
+            Box {
+                when {
+                    photoUriString != null -> {
+                        Image(
+                            painter = rememberAsyncImagePainter(photoUriString),
+                            contentDescription = name,
+                            modifier = Modifier
+                                .height(140.dp)
+                                .fillMaxWidth(),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+                    imageRes != R.drawable.blank -> {
+                        Image(
+                            painter = painterResource(id = imageRes),
+                            contentDescription = name,
+                            modifier = Modifier
+                                .height(140.dp)
+                                .fillMaxWidth(),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+                    else -> {
+                        Box(
+                            modifier = Modifier
+                                .height(140.dp)
+                                .fillMaxWidth()
+                                .background(MaterialTheme.colorScheme.surfaceVariant),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Default.Image,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                modifier = Modifier.size(48.dp)
+                            )
+                        }
+                    }
+                }
+
+                if (isSoldOut || isBorrowed) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(140.dp)
+                            .background(Color.Black.copy(alpha = 0.5f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Surface(
+                            color = if (isSoldOut) MaterialTheme.colorScheme.error
+                            else Color(0xFF5C6BC0),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(
+                                if (isSoldOut) "Sold Out" else "Borrowed",
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp
+                            )
+                        }
+                    }
+                }
+            }
+
             Row(
                 modifier = Modifier
                     .padding(16.dp)
@@ -332,22 +542,27 @@ fun FullWidthItemCard(name: String, imageRes: Int, onItemClick: () -> Unit = {})
                     color = MaterialTheme.colorScheme.outlineVariant
                 )
                 Text(
-                    "Available for reservation near you. Tap the button below to reserve this item before it's gone!",
+                    if (isSoldOut) "This item has been fully reserved."
+                    else if (isBorrowed) "This item is currently being borrowed."
+                    else "Available for reservation near you. Tap the button below to reserve this item before it's gone!",
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     fontSize = 14.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Button(
-                    onClick = { onItemClick() },
-                    modifier = Modifier
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                        .fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary
-                    )
-                ) {
-                    Text("View Details →", color = MaterialTheme.colorScheme.onPrimary)
+                if (!isSoldOut && !isBorrowed) {
+                    Button(
+                        onClick = { onItemClick() },
+                        modifier = Modifier
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                            .fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary
+                        )
+                    ) {
+                        Text("View Details →", color = MaterialTheme.colorScheme.onPrimary)
+                    }
                 }
+                Spacer(modifier = Modifier.height(8.dp))
             }
         }
     }
@@ -367,7 +582,7 @@ fun getItemImage(name: String): Int {
         "Chair" -> R.drawable.chair
         "Table" -> R.drawable.table
         "Books" -> R.drawable.books
-        else -> R.drawable.ic_launcher_background
+        else -> R.drawable.blank
     }
 }
 
@@ -375,7 +590,7 @@ fun getItemImage(name: String): Int {
 @Composable
 fun FilterSection(selected: String, onSelect: (String) -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        listOf("All", "Food", "Non-food").forEach { tag ->
+        listOf("All", "Food", "Non-food","Going Soon").forEach { tag ->
             FilterChip(
                 selected = selected == tag,
                 onClick = { onSelect(tag) },
@@ -391,7 +606,7 @@ fun FilterSection(selected: String, onSelect: (String) -> Unit) {
 }
 
 @Composable
-fun HeaderSection(cartCount: Int) {
+fun HeaderSection(cartCount: Int, onCartClick: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -419,14 +634,13 @@ fun HeaderSection(cartCount: Int) {
                 )
             }
         }
-        
-        // Cart Icon with Badge
         BadgedBox(
             badge = {
                 if (cartCount > 0) {
                     Badge { Text(cartCount.toString()) }
                 }
-            }
+            },
+            modifier = Modifier.clickable { onCartClick() }
         ) {
             Icon(
                 Icons.Default.ShoppingCart,
@@ -476,20 +690,25 @@ fun PromoCard(text: String, color: Color) {
 }
 
 @Composable
-fun CustomBottomNavigation(onHomeClick: () -> Unit, onSearchClick: () -> Unit) {
+fun CustomBottomNavigation(
+    onHomeClick: () -> Unit,
+    onSearchClick: () -> Unit,
+    onEmailClick: () -> Unit,
+    onAddClick: () -> Unit
+) {
     BottomAppBar(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
-            IconButton(onClick = onHomeClick) {
+            IconButton(onClick = onHomeClick) {   // ← was hardcoded, now uses param
                 Icon(Icons.Default.Home, null, tint = MaterialTheme.colorScheme.onSurface)
             }
             IconButton(onClick = onSearchClick) {
                 Icon(Icons.Default.Search, null, tint = MaterialTheme.colorScheme.onSurface)
             }
             FloatingActionButton(
-                onClick = {},
+                onClick = onAddClick,
                 containerColor = MaterialTheme.colorScheme.primary,
                 shape = RoundedCornerShape(50)
             ) {
@@ -498,7 +717,7 @@ fun CustomBottomNavigation(onHomeClick: () -> Unit, onSearchClick: () -> Unit) {
             IconButton(onClick = {}) {
                 Icon(Icons.Default.Person, null, tint = MaterialTheme.colorScheme.onSurface)
             }
-            IconButton(onClick = {}) {
+            IconButton(onClick = onEmailClick) {
                 Icon(Icons.Default.Email, null, tint = MaterialTheme.colorScheme.onSurface)
             }
         }
@@ -509,7 +728,7 @@ fun CustomBottomNavigation(onHomeClick: () -> Unit, onSearchClick: () -> Unit) {
 @Composable
 fun ReServeAppPreview() {
     AppTheme(dynamicColor = false) {
-        ReServeApp()
+        ReServeApp(onEmailClick = { _, _ -> }, viewModel = viewModel())
     }
 }
 
@@ -517,6 +736,6 @@ fun ReServeAppPreview() {
 @Composable
 fun ReServeAppDarkThemePreview() {
     AppTheme(darkTheme = true, dynamicColor = false) {
-        ReServeApp()
+        ReServeApp(onEmailClick = { _, _ -> }, viewModel = viewModel())
     }
 }

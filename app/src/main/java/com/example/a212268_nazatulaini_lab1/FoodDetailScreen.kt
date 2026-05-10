@@ -57,15 +57,36 @@ fun getFoodItemData(name: String): FoodItem {
 fun FoodDetailScreen(
     itemName: String,
     onBack: () -> Unit,
+    onMessageOwner: (String, String) -> Unit = { _, _ -> },
+    onHomeClick: () -> Unit = {},
+    chatViewModel: ChatViewModel = viewModel(),
     viewModel: ReServeViewModel = viewModel()
 ) {
-    val item = remember { getFoodItemData(itemName) }
+    val userItem = viewModel.getUserListedItem(itemName)
+    val item = if (userItem != null) {
+        FoodItem(
+            name            = userItem.name,
+            originalPrice   = userItem.originalPrice,
+            discountPercent = userItem.discountPercent,
+            seller          = userItem.sellerName,
+            distance        = userItem.location,
+            expiresIn       = userItem.expiresIn,
+            description     = userItem.description,
+            quantity        = userItem.quantity
+        )
+    } else {
+        getFoodItemData(itemName)
+    }
     val discountedPrice = item.originalPrice * (1 - item.discountPercent / 100.0)
     var quantity by remember { mutableIntStateOf(1) }
     var currentScreen by remember { mutableStateOf(FoodScreen.NONE) }
     var cartMessage by remember { mutableStateOf("") }
 
+    val remainingStock = viewModel.getRemainingStock(itemName)
+    val isSoldOut = viewModel.isSoldOut(itemName)
 
+// Clamp quantity if it exceeds remaining stock
+    if (quantity > remainingStock && remainingStock > 0) quantity = remainingStock
     Box(modifier = Modifier.fillMaxSize()) {
 
         // ── 1. Background ──────────────────────────────────────────────
@@ -80,11 +101,21 @@ fun FoodDetailScreen(
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.65f))
         )
-
-        // ── 2. Main Scrollable Content ─────────────────────────────────
-        Column(modifier = Modifier.fillMaxSize()) {
-
-            // Hero Image
+        Scaffold(                                  // ← add
+            containerColor = Color.Transparent,
+            bottomBar = {
+                CustomBottomNavigation(
+                    onHomeClick = onHomeClick,
+                    onSearchClick = onHomeClick,
+                    onEmailClick = onHomeClick,
+                    onAddClick = onHomeClick
+                )
+            }
+        ){ innerPadding ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+            ) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -168,7 +199,8 @@ fun FoodDetailScreen(
             ) {
                 Column(
                     modifier = Modifier
-                        .padding(24.dp)
+                        .padding(top = 24.dp, start = 24.dp, end = 24.dp)
+                        .padding(bottom = innerPadding.calculateBottomPadding() + 24.dp)
                         .verticalScroll(rememberScrollState())
                 ) {
                     // Pricing
@@ -261,6 +293,21 @@ fun FoodDetailScreen(
                             )
                         }
                     }
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    OutlinedButton(
+                        onClick = {
+                            chatViewModel.startConversation(item.seller, itemName, getItemImage(itemName))
+                            onMessageOwner(item.seller, itemName)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary)
+                    ) {
+                        Icon(Icons.Default.Email, null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Message Owner")
+                    }
 
                     Spacer(modifier = Modifier.height(24.dp))
 
@@ -328,7 +375,7 @@ fun FoodDetailScreen(
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             OutlinedIconButton(
-                                onClick = { if (quantity < item.quantity) quantity++ },
+                                onClick = { if (quantity < remainingStock) quantity++ },
                                 modifier = Modifier.size(40.dp)
                             ) {
                                 Icon(
@@ -339,9 +386,9 @@ fun FoodDetailScreen(
                             }
                         }
                         Text(
-                            "Available: ${item.quantity}",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            if (isSoldOut) "Sold Out" else "Available: $remainingStock",
+                            color = if (isSoldOut) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
 
@@ -354,7 +401,7 @@ fun FoodDetailScreen(
                     ) {
                         OutlinedButton(
                             onClick = {
-                                viewModel.addToCart(itemName)
+                                viewModel.addToCart(itemName, quantity)
                                 cartMessage = "Added to cart!"
                             },
                             modifier = Modifier
@@ -370,15 +417,19 @@ fun FoodDetailScreen(
 
                         Button(
                             onClick = { currentScreen = FoodScreen.CONFIRM },
-                            modifier = Modifier
-                                .weight(1.5f)
-                                .height(56.dp),
+                            enabled = !isSoldOut,
+                            modifier = Modifier.weight(1.5f).height(56.dp),
                             shape = RoundedCornerShape(16.dp),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary
+                                containerColor = if (isSoldOut) Color.Gray
+                                else MaterialTheme.colorScheme.primary
                             )
                         ) {
-                            Text("Reserve", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                            Text(
+                                if (isSoldOut) "Sold Out" else "Reserve",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp
+                            )
                         }
                     }
 
@@ -537,7 +588,9 @@ fun FoodDetailScreen(
 
                     // Confirm button
                     Button(
-                        onClick = { currentScreen = FoodScreen.RESERVED },
+                        onClick = {
+                            viewModel.reserveFoodItem(itemName, quantity)
+                            currentScreen = FoodScreen.RESERVED },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(56.dp),
@@ -659,12 +712,15 @@ fun FoodDetailScreen(
                             modifier = Modifier.padding(20.dp),
                             verticalArrangement = Arrangement.spacedBy(14.dp)
                         ) {
-                            ConfirmationInfoRow(Icons.Default.LocationOn, "Pick up from ${item.seller}")
+                            ConfirmationInfoRow(
+                                Icons.Default.LocationOn,
+                                "Pick up from ${item.seller}"
+                            )
                             ConfirmationInfoRow(Icons.Default.DateRange, "Collect within 2 hours")
                             ConfirmationInfoRow(Icons.Default.Info, "Show this screen at pickup")
                         }
                     }
-
+                }
                     Spacer(modifier = Modifier.height(40.dp))
 
                     Button(
