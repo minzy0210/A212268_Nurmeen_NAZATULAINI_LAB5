@@ -7,10 +7,11 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 
 @Composable
-fun AppNavigation() {
+fun AppNavigation(
+    viewModel: ReServeViewModel,
+    chatViewModel: ChatViewModel = viewModel()
+) {
     val navController = rememberNavController()
-    val viewModel: ReServeViewModel = viewModel()
-    val chatViewModel: ChatViewModel = viewModel()
 
     val goHome: () -> Unit = {
         navController.navigate("home") {

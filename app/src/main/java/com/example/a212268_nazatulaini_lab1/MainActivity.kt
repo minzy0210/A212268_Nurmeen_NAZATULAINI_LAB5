@@ -1,6 +1,7 @@
 package com.example.a212268_nazatulaini_lab1
 
 import android.os.Bundle
+import androidx.lifecycle.ViewModelProvider
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.*
@@ -32,9 +33,17 @@ import com.example.a212268_nazatulaini_lab1.ui.theme.AppTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        val repository = (application as ReServeApplication).repository
+
+        val viewModel = ViewModelProvider(
+            this,
+            ReServeViewModel.Factory(repository)
+        )[ReServeViewModel::class.java]
+
         setContent {
             AppTheme(dynamicColor = false) {
-                AppNavigation()
+                AppNavigation(viewModel = viewModel)
             }
         }
     }
