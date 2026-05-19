@@ -1,5 +1,6 @@
 package com.example.a212268_nazatulaini_lab1
 
+import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -18,19 +19,34 @@ fun AppNavigation(
         }
     }
 
+    fun navigateToDetail(itemName: String) {
+        val userItem = viewModel.getUserListedItem(itemName)
+        when {
+            userItem != null -> {
+                val encodedName = Uri.encode(userItem.name)
+                val encodedCat  = Uri.encode(userItem.category)
+                navController.navigate("my_listing_detail/$encodedName/$encodedCat")
+            }
+            viewModel.getFoodItems().any { it.name == itemName } ->
+                navController.navigate("foodDetail/${Uri.encode(itemName)}")
+            else ->
+                navController.navigate("nonFoodDetail/${Uri.encode(itemName)}")
+        }
+    }
+
     NavHost(navController = navController, startDestination = "home") {
         composable("home") {
             ReServeApp(
-                onFoodItemClick = { navController.navigate("foodDetail/$it") },
-                onNonFoodItemClick = { navController.navigate("nonFoodDetail/$it") },
-                onCartClick = { navController.navigate("cart") },
-                onAddClick = { navController.navigate("add_item") },
-                onEmailClick = { owner, item -> navController.navigate("chat_detail/$owner/$item") },
-                chatViewModel = chatViewModel,
-                onAllFoodClick = { navController.navigate("category/Food") },
-                onAllNonFoodClick = { navController.navigate("category/Non-food") },
+                onFoodItemClick    = { navigateToDetail(it) },   // ← changed
+                onNonFoodItemClick = { navigateToDetail(it) },   // ← changed
+                onCartClick        = { navController.navigate("cart") },
+                onAddClick         = { navController.navigate("add_item") },
+                onEmailClick       = { owner, item -> navController.navigate("chat_detail/$owner/$item") },
+                chatViewModel      = chatViewModel,
+                onAllFoodClick     = { navController.navigate("category/Food") },
+                onAllNonFoodClick  = { navController.navigate("category/Non-food") },
                 onAllGoingSoonClick = { navController.navigate("going_soon") },
-                viewModel = viewModel
+                viewModel          = viewModel
             )
         }
         composable("foodDetail/{itemName}") { back ->
@@ -87,7 +103,7 @@ fun AppNavigation(
         composable("going_soon") {
             GoingSoonScreen(
                 onBack = { navController.popBackStack() },
-                onItemClick = { navController.navigate("foodDetail/$it") },
+                onItemClick = { navigateToDetail(it) },
                 onHomeClick = goHome,
                 viewModel = viewModel
             )
@@ -114,12 +130,12 @@ fun AppNavigation(
         composable("category/{filter}") { back ->
             val filter = back.arguments?.getString("filter") ?: "Food"
             CategoryScreen(
-                filter = filter,
-                onBack = { navController.popBackStack() },
-                onHomeClick = goHome,
-                onFoodItemClick = { navController.navigate("foodDetail/$it") },
-                onNonFoodItemClick = { navController.navigate("nonFoodDetail/$it") },
-                viewModel = viewModel
+                filter             = filter,
+                onBack             = { navController.popBackStack() },
+                onHomeClick        = goHome,
+                onFoodItemClick    = { navigateToDetail(it) },   // ← changed
+                onNonFoodItemClick = { navigateToDetail(it) },   // ← changed
+                viewModel          = viewModel
             )
         }
     }

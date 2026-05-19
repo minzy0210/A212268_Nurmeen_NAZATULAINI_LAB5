@@ -173,10 +173,16 @@ private fun GoingSoonItemCard(
     viewModel: ReServeViewModel,
     onClick: () -> Unit
 ) {
-    val foodItem = getFoodItemData(name)
-    val discountedPrice = foodItem.originalPrice * (1 - foodItem.discountPercent / 100.0)
-    val isSoldOut = viewModel.isSoldOut(name)
-    val remaining = viewModel.getRemainingStock(name)
+    val userItem = viewModel.getUserListedItem(name)
+    val originalPrice  = userItem?.originalPrice  ?: getFoodItemData(name).originalPrice
+    val discountPercent = userItem?.discountPercent ?: getFoodItemData(name).discountPercent
+    val expiresIn      = userItem?.expiresIn       ?: getFoodItemData(name).expiresIn
+    val seller         = userItem?.sellerName      ?: getFoodItemData(name).seller
+    val distance       = userItem?.location        ?: getFoodItemData(name).distance
+
+    val discountedPrice = originalPrice * (1 - discountPercent / 100.0)
+    val isSoldOut  = viewModel.isSoldOut(name)
+    val remaining  = viewModel.getRemainingStock(name)
 
     Card(
         modifier = Modifier
@@ -204,7 +210,7 @@ private fun GoingSoonItemCard(
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Text(
-                        "Expires: ${foodItem.expiresIn}",
+                        "Expires: $expiresIn",
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
                         color = Color.White,
                         fontSize = 10.sp,
@@ -249,13 +255,13 @@ private fun GoingSoonItemCard(
                     )
                     Spacer(Modifier.height(2.dp))
                     Text(
-                        foodItem.seller,
+                        seller,
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(Modifier.height(2.dp))
                     Text(
-                        foodItem.distance,
+                       distance,
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -273,7 +279,7 @@ private fun GoingSoonItemCard(
                             color = MaterialTheme.colorScheme.primary
                         )
                         Text(
-                            "RM %.2f".format(foodItem.originalPrice),
+                            "RM %.2f".format(originalPrice),
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textDecoration = TextDecoration.LineThrough
@@ -285,7 +291,7 @@ private fun GoingSoonItemCard(
                         shape = RoundedCornerShape(8.dp)
                     ) {
                         Text(
-                            if (isSoldOut) "Gone" else "$remaining left · -${foodItem.discountPercent}%",
+                            if (isSoldOut) "Gone" else "$remaining left · discountPercent}%",
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                             color = if (isSoldOut) Color.Gray else Color(0xFFB71C1C),
                             fontSize = 11.sp,
